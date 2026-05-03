@@ -1,55 +1,40 @@
--- control.lua
-
 local GUI_NAME = "srm_route_panel"
 
--- ─────────────────────────────────────────────
--- UTILITAIRES
--- ─────────────────────────────────────────────
-
-local function get_selected_platform(player)
-  if player.surface and player.surface.platform then
-    return player.surface.platform
+local function find_platform_by_name(platform_name)
+  for _, surface in pairs(game.surfaces) do
+    if surface.platform and surface.platform.name == platform_name then
+      return surface.platform
+    end
   end
+
   return nil
 end
 
-local function get_platform_ships(platform)
-  local ships = {}
-  if not platform then return ships end
-
-  for _, surface in pairs(game.surfaces) do
-    if surface.platform then
-      local p = surface.platform
-      table.insert(ships, {
-        name = p.name,
-        platform = p,
-        surface = surface
-      })
-    end
-  end
-  return ships
-end
-
 local function is_route_disabled(platform_name, target_name)
-  if not global.srm_disabled_routes then return false end
+  if not global.srm_disabled_routes then
+    return false
+  end
+
   local key = platform_name .. "|" .. target_name
   return global.srm_disabled_routes[key] == true
 end
 
 local function toggle_route(platform_name, target_name)
-  if not global.srm_disabled_routes then
-    global.srm_disabled_routes = {}
-  end
+  global.srm_disabled_routes = global.srm_disabled_routes or {}
+
   local key = platform_name .. "|" .. target_name
   global.srm_disabled_routes[key] = not global.srm_disabled_routes[key]
 end
 
 local function apply_routes(platform)
-  if not platform then return end
+  if not platform then
+    return
+  end
 
-  local hub = platform.hub_surface_index and game.surfaces[platform.hub_surface_index]
   local schedule = platform.schedule
-  if not schedule then return end
+  if not schedule then
+    return
+  end
 
   local new_records = {}
   for _, record in pairs(schedule.records) do
@@ -59,7 +44,7 @@ local function apply_routes(platform)
     end
   end
 
-  if not global.srm_full_schedules then global.srm_full_schedules = {} end
+  global.srm_full_schedules = global.srm_full_schedules or {}
   if not global.srm_full_schedules[platform.name] then
     global.srm_full_schedules[platform.name] = schedule.records
   end
@@ -67,14 +52,11 @@ local function apply_routes(platform)
   platform.schedule = { current = schedule.current, records = new_records }
 end
 
--- ─────────────────────────────────────────────
--- GUI
--- ─────────────────────────────────────────────
-
 local function destroy_gui(player)
   if player.gui.relative[GUI_NAME] then
     player.gui.relative[GUI_NAME].destroy()
   end
+
   if player.gui.screen[GUI_NAME] then
     player.gui.screen[GUI_NAME].destroy()
   end
@@ -93,7 +75,7 @@ local function build_gui(player, platform)
   local frame = player.gui.screen.add{
     type = "frame",
     name = GUI_NAME,
-    caption = {"", "🚀 Routes — ", platform.name},
+    caption = {"space-route-manager.panel-title", platform.name},
     direction = "vertical"
   }
   frame.auto_center = true
@@ -101,7 +83,7 @@ local function build_gui(player, platform)
 
   local subtitle = frame.add{
     type = "label",
-    caption = "Cliquez sur une destination pour activer / désactiver la route."
+    caption = {"space-route-manager.panel-subtitle"}
   }
   subtitle.style.single_line = false
   subtitle.style.bottom_margin = 8
@@ -123,7 +105,7 @@ local function build_gui(player, platform)
   if #full_records == 0 then
     list.add{
       type = "label",
-      caption = "Aucune route configurée pour ce vaisseau."
+      caption = {"space-route-manager.no-routes"}
     }
   else
     for i, record in pairs(full_records) do
@@ -135,14 +117,13 @@ local function build_gui(player, platform)
       end
 
       local disabled = is_route_disabled(platform.name, dest_name)
-      local icon = disabled and "❌ " or "✅ "
       local style = disabled and "srm_disabled_route_button" or "srm_enabled_route_button"
-      local caption = icon .. dest_name .. (disabled and "  [désactivée]" or "  [active]")
+      local state = disabled and {"space-route-manager.route-state-disabled"} or {"space-route-manager.route-state-active"}
 
       local btn = list.add{
         type = "button",
         name = "srm_toggle_" .. i .. "_" .. dest_name,
-        caption = caption,
+        caption = {"", dest_name, " ", state},
         style = style,
         tags = {
           srm_action = "toggle_route",
@@ -162,7 +143,7 @@ local function build_gui(player, platform)
   local apply_btn = footer.add{
     type = "button",
     name = "srm_apply",
-    caption = "Appliquer",
+    caption = {"space-route-manager.apply"},
     tags = { srm_action = "apply_routes", platform_name = platform.name }
   }
   apply_btn.style.right_margin = 4
@@ -170,25 +151,21 @@ local function build_gui(player, platform)
   footer.add{
     type = "button",
     name = "srm_close",
-    caption = "Fermer",
+    caption = {"space-route-manager.close"},
     tags = { srm_action = "close" }
   }
 end
 
--- ─────────────────────────────────────────────
--- INJECTION DU BOUTON DANS LE PANNEAU PLATFORM
--- ─────────────────────────────────────────────
-
 local function inject_button(player, platform)
   local target_frame = nil
 
-  for _, gui_root in pairs({player.gui.relative, player.gui.left, player.gui.center}) do
+  for _, gui_root in pairs({ player.gui.relative, player.gui.left, player.gui.center }) do
     if gui_root["space-platform-hub-gui"] then
       target_frame = gui_root["space-platform-hub-gui"]
       break
     end
 
-    for name, child in pairs(gui_root.children_names and gui_root or {}) do
+    for name, _ in pairs(gui_root.children_names and gui_root or {}) do
       if type(name) == "string" and name:find("platform") then
         target_frame = gui_root[name]
         break
@@ -202,23 +179,20 @@ local function inject_button(player, platform)
       toolbar.add{
         type = "sprite-button",
         name = "srm_open_button",
-        sprite = "utility/slot_icon_module",
-        tooltip = "Gérer les routes de ce vaisseau",
+        sprite = "srm-route-icon",
+        tooltip = {"space-route-manager.open-tooltip"},
         style = "frame_action_button",
         tags = { srm_action = "open_panel", platform_name = platform.name }
       }
     end
-  else
-    -- Fallback : bouton dans player.gui.left
-    if not player.gui.left["srm_open_button_left"] then
-      local btn = player.gui.left.add{
-        type = "button",
-        name = "srm_open_button_left",
-        caption = "🚀 Routes",
-        tooltip = "Gérer les routes du vaisseau",
-        tags = { srm_action = "open_panel", platform_name = platform.name }
-      }
-    end
+  elseif not player.gui.left["srm_open_button_left"] then
+    player.gui.left.add{
+      type = "button",
+      name = "srm_open_button_left",
+      caption = {"space-route-manager.open-caption"},
+      tooltip = {"space-route-manager.open-tooltip"},
+      tags = { srm_action = "open_panel", platform_name = platform.name }
+    }
   end
 end
 
@@ -228,11 +202,6 @@ local function remove_inject_button(player)
   end
 end
 
--- ─────────────────────────────────────────────
--- ÉVÉNEMENTS
--- ─────────────────────────────────────────────
-
--- Initialisation du storage global
 script.on_init(function()
   global.srm_disabled_routes = {}
   global.srm_full_schedules = {}
@@ -243,12 +212,12 @@ script.on_configuration_changed(function()
   global.srm_full_schedules = global.srm_full_schedules or {}
 end)
 
--- Détection de l'ouverture du panneau d'une space platform
 script.on_event(defines.events.on_gui_opened, function(event)
   local player = game.players[event.player_index]
-  if not player then return end
+  if not player then
+    return
+  end
 
-  -- Vérifie si c'est une space platform hub qui est ouverte
   if event.entity and event.entity.type == "space-platform-hub" then
     local platform = player.surface.platform
     if platform then
@@ -259,70 +228,58 @@ end)
 
 script.on_event(defines.events.on_gui_closed, function(event)
   local player = game.players[event.player_index]
-  if not player then return end
+  if not player then
+    return
+  end
+
   remove_inject_button(player)
   destroy_gui(player)
 end)
 
--- Gestion des clics sur les boutons
 script.on_event(defines.events.on_gui_click, function(event)
   local player = game.players[event.player_index]
-  if not player then return end
+  if not player then
+    return
+  end
 
   local element = event.element
-  if not element or not element.valid then return end
-  if not element.tags or not element.tags.srm_action then return end
+  if not element or not element.valid then
+    return
+  end
+
+  if not element.tags or not element.tags.srm_action then
+    return
+  end
 
   local action = element.tags.srm_action
 
-  -- Ouvre le panneau de gestion des routes
   if action == "open_panel" then
     local platform_name = element.tags.platform_name
-    -- Cherche la platform par nom
-    local platform = nil
-    for _, surface in pairs(game.surfaces) do
-      if surface.platform and surface.platform.name == platform_name then
-        platform = surface.platform
-        break
-      end
-    end
+    local platform = find_platform_by_name(platform_name)
     if platform then
       build_gui(player, platform)
     else
-      player.print("[Space Route Manager] Platform introuvable : " .. tostring(platform_name))
+      player.print({"space-route-manager.platform-not-found", tostring(platform_name)})
     end
-
-  -- Bascule l'état d'une route
   elseif action == "toggle_route" then
     local platform_name = element.tags.platform_name
     local dest_name = element.tags.dest_name
+
     toggle_route(platform_name, dest_name)
 
-    -- Rafraîchit le GUI
-    local platform = nil
-    for _, surface in pairs(game.surfaces) do
-      if surface.platform and surface.platform.name == platform_name then
-        platform = surface.platform
-        break
-      end
-    end
+    local platform = find_platform_by_name(platform_name)
     if platform then
       build_gui(player, platform)
     end
-
-  -- Applique les routes (modifie le schedule)
   elseif action == "apply_routes" then
     local platform_name = element.tags.platform_name
-    for _, surface in pairs(game.surfaces) do
-      if surface.platform and surface.platform.name == platform_name then
-        apply_routes(surface.platform)
-        player.print("[Space Route Manager] Routes appliquées pour : " .. platform_name)
-        break
-      end
+    local platform = find_platform_by_name(platform_name)
+    if platform then
+      apply_routes(platform)
+      player.print({"space-route-manager.routes-applied", platform_name})
     end
-    destroy_gui(player)
 
-  -- Ferme le panneau
+    destroy_gui(player)
   elseif action == "close" then
     destroy_gui(player)
   end
