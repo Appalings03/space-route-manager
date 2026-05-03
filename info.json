@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "title": "Space Route Manager",
   "author": "Appalings03",
-  "description": "",
+  "description": "Manage space platform routes from an in game panel and enable or disable individual destinations without editing the schedule manually.",
   "dependencies": ["base >= 2.0.0", "space-age >= 2.0.0"],
   "factorio_version": "2.0"
 }
