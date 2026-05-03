@@ -29,27 +29,24 @@ end
 -- GRAPHE DES CONNEXIONS (via prototypes)
 -- ─────────────────────────────────────────────
 
--- Construit le graphe en lisant les connexions depuis chaque planete
--- game.planets expose les connexions via planet.connected_to
--- Retourne { ["Nauvis"] = { ["Gleba"]=true, ... }, ... }
+-- Construit le graphe depuis prototypes.space_connection
+-- En runtime, .from et .to sont des SpaceLocationID (strings), pas des objets
+-- Le graphe est mis en cache dans storage.srm_graph
 local function build_graph()
+  if storage.srm_graph then return storage.srm_graph end
+
   local graph = {}
-  -- Methode 1 : via les surfaces de type platform en transit (LuaSpaceConnectionPrototype)
-  -- On passe par prototypes au sens large : on cherche dans data.raw via helpers
-  -- Methode la plus fiable : lire depuis chaque surface spatiale connue
-  -- En Factorio 2.0, game.planets retourne des LuaPlanet avec leurs connexions
-  for name, planet in pairs(game.planets) do
-    graph[name] = graph[name] or {}
-    -- LuaPlanet.connected_to liste les planetes directement connectees
-    if planet.connected_to then
-      for _, neighbor in pairs(planet.connected_to) do
-        local nb = neighbor.name
-        graph[name][nb] = true
-        graph[nb] = graph[nb] or {}
-        graph[nb][name] = true
-      end
-    end
+  for _, conn in pairs(prototypes.space_connection) do
+    -- .from et .to sont des strings (noms des locations) en runtime
+    local a = type(conn.from) == "string" and conn.from or conn.from.name
+    local b = type(conn.to) == "string" and conn.to or conn.to.name
+    graph[a] = graph[a] or {}
+    graph[b] = graph[b] or {}
+    graph[a][b] = true
+    graph[b][a] = true
   end
+
+  storage.srm_graph = graph
   return graph
 end
 
@@ -99,8 +96,9 @@ end
 -- Cherche un LuaSpaceLocationPrototype par nom dans les prototypes
 local function get_space_location_proto(name)
   -- Cherche d'abord dans les planetes
-  -- game.planets est le seul acces fiable en runtime Factorio 2.0
-  if game.planets[name] then return game.planets[name] end
+  -- game.planets retourne un LuaPlanet utilisable dans les records de schedule
+  local p = game.planets[name]
+  if p then return p end
   return nil
 end
 
@@ -394,11 +392,13 @@ end
 script.on_init(function()
   storage.srm_forbidden = {}
   storage.srm_full_schedules = {}
+  storage.srm_graph = nil  -- sera construit au premier appel
 end)
 
 script.on_configuration_changed(function()
   storage.srm_forbidden = storage.srm_forbidden or {}
   storage.srm_full_schedules = storage.srm_full_schedules or {}
+  storage.srm_graph = nil  -- invalide le cache si des mods ont change les connexions
 end)
 
 script.on_event(defines.events.on_gui_opened, function(event)
