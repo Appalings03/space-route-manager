@@ -29,17 +29,26 @@ end
 -- GRAPHE DES CONNEXIONS (via prototypes)
 -- ─────────────────────────────────────────────
 
--- En Factorio 2.0, les connexions spatiales sont dans prototypes.space_connection
+-- Construit le graphe en lisant les connexions depuis chaque planete
+-- game.planets expose les connexions via planet.connected_to
 -- Retourne { ["Nauvis"] = { ["Gleba"]=true, ... }, ... }
 local function build_graph()
   local graph = {}
-  for name, conn in pairs(prototypes.space_connection) do
-    local a = conn.from.name
-    local b = conn.to.name
-    graph[a] = graph[a] or {}
-    graph[b] = graph[b] or {}
-    graph[a][b] = true
-    graph[b][a] = true
+  -- Methode 1 : via les surfaces de type platform en transit (LuaSpaceConnectionPrototype)
+  -- On passe par prototypes au sens large : on cherche dans data.raw via helpers
+  -- Methode la plus fiable : lire depuis chaque surface spatiale connue
+  -- En Factorio 2.0, game.planets retourne des LuaPlanet avec leurs connexions
+  for name, planet in pairs(game.planets) do
+    graph[name] = graph[name] or {}
+    -- LuaPlanet.connected_to liste les planetes directement connectees
+    if planet.connected_to then
+      for _, neighbor in pairs(planet.connected_to) do
+        local nb = neighbor.name
+        graph[name][nb] = true
+        graph[nb] = graph[nb] or {}
+        graph[nb][name] = true
+      end
+    end
   end
   return graph
 end
@@ -90,9 +99,8 @@ end
 -- Cherche un LuaSpaceLocationPrototype par nom dans les prototypes
 local function get_space_location_proto(name)
   -- Cherche d'abord dans les planetes
-  if prototypes.planet[name] then return prototypes.planet[name] end
-  -- Puis dans toutes les space_locations
-  if prototypes.space_location[name] then return prototypes.space_location[name] end
+  -- game.planets est le seul acces fiable en runtime Factorio 2.0
+  if game.planets[name] then return game.planets[name] end
   return nil
 end
 
@@ -110,9 +118,9 @@ local function stop_platform(platform)
     end
   end
 
-  -- Met le schedule a vide pour arreter le vaisseau
-  -- (un vaisseau sans schedule s'arrete en orbite)
-  platform.schedule = { current = 1, records = {} }
+  -- Supprime le schedule pour arreter le vaisseau en orbite
+  -- (nil = pas de destination, le vaisseau reste sur place)
+  platform.schedule = nil
 end
 
 -- Applique le nouveau schedule avec detours et relance le vaisseau
@@ -240,7 +248,7 @@ local function build_gui(player, platform)
     all_planets = get_all_reachable_planets(graph, start_name)
   else
     -- Fallback : toutes les planetes du jeu
-    for name, _ in pairs(prototypes.planet) do
+    for name, _ in pairs(game.planets) do
       table.insert(all_planets, name)
     end
     table.sort(all_planets)
@@ -467,7 +475,11 @@ script.on_event(defines.events.on_gui_click, function(event)
       -- Restaure le schedule original
       if storage.srm_full_schedules and storage.srm_full_schedules[platform.name] then
         local original = storage.srm_full_schedules[platform.name]
-        platform.schedule = { current = 1, records = original }
+        if original and #original > 0 then
+          platform.schedule = { current = 1, records = original }
+        else
+          platform.schedule = nil
+        end
         player.print("[Space Route Manager] Routes restaurees pour " .. platform.name, {r=0.4, g=0.9, b=0.4})
       end
     end
